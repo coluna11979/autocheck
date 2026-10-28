@@ -1,3 +1,4 @@
+import { z } from "zod";
 export const systems = [
   "Motor e transmissão",
   "Freios",
@@ -24,6 +25,10 @@ export interface Finding {
   notes: string;
   priority: Priority;
   estimate: number;
+  origin?: "manual" | "preventive" | "diagnostic";
+  sourceId?: string;
+  evidence?: string;
+  confirmedAt?: string;
 }
 export interface Inspection {
   vehicle: Vehicle;
@@ -31,6 +36,7 @@ export interface Inspection {
   plan: Plan;
   findings: Finding[];
   inspected: System[];
+  reportVehicleId?: string;
 }
 export const priorities: Record<
   Priority,
@@ -87,35 +93,38 @@ export const emptyInspection: Inspection = {
   inspected: [],
 };
 export const STORAGE_KEY = "autocheck.inspection.v1";
+const legacyFindingSchema = z
+  .object({
+    id: z.string(),
+    system: z.enum(systems),
+    title: z.string(),
+    notes: z.string(),
+    priority: z.enum(["urgent", "soon", "later"]),
+    estimate: z.number().finite().nonnegative(),
+    origin: z.enum(["manual", "preventive", "diagnostic"]).optional(),
+    sourceId: z.string().optional(),
+    evidence: z.string().optional(),
+    confirmedAt: z.string().datetime().optional(),
+  })
+  .passthrough();
+const legacyStorageSchema = z
+  .object({
+    vehicle: z
+      .object({
+        owner: z.string(),
+        model: z.string(),
+        plate: z.string(),
+        year: z.string(),
+        mileage: z.string(),
+      })
+      .passthrough(),
+    category: z.enum(["compact", "sedan", "suv"]),
+    plan: z.enum(["essential", "complete", "premium"]),
+    findings: z.array(legacyFindingSchema),
+    inspected: z.array(z.enum(systems)),
+    reportVehicleId: z.string().min(1).optional(),
+  })
+  .passthrough();
 export function parseInspection(raw: string): Inspection {
-  const data = JSON.parse(raw);
-  if (
-    !data ||
-    !data.vehicle ||
-    !Object.values(data.vehicle).every((v) => typeof v === "string") ||
-    !["owner", "model", "plate", "year", "mileage"].every(
-      (k) => typeof data.vehicle[k] === "string",
-    ) ||
-    !Object.hasOwn(categories, data.category) ||
-    !Object.hasOwn(plans, data.plan) ||
-    !Array.isArray(data.findings) ||
-    !Array.isArray(data.inspected)
-  )
-    throw new Error("Dados inválidos");
-  if (
-    !data.inspected.every((s: System) => systems.includes(s)) ||
-    !data.findings.every(
-      (f: Finding) =>
-        f &&
-        typeof f.id === "string" &&
-        systems.includes(f.system) &&
-        typeof f.title === "string" &&
-        typeof f.notes === "string" &&
-        Object.hasOwn(priorities, f.priority) &&
-        Number.isFinite(f.estimate) &&
-        f.estimate >= 0,
-    )
-  )
-    throw new Error("Achados inválidos");
-  return data as Inspection;
+  return legacyStorageSchema.parse(JSON.parse(raw));
 }
