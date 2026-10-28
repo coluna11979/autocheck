@@ -1,5 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
+import BuilderWorkspace, {
+  screens,
+  type Screen,
+} from "@/components/builder/workspace";
 import {
   Activity,
   ArrowDownToLine,
@@ -49,6 +53,14 @@ export default function Dashboard() {
   const [notes, setNotes] = useState("");
   const [estimate, setEstimate] = useState("");
   const [tab, setTab] = useState("inspection");
+  const [screen, setScreen] = useState<Screen>("panel");
+  const navigate = (next: Screen) => {
+    setScreen(next);
+    if (next === "report")
+      requestAnimationFrame(() =>
+        document.getElementById("report")?.scrollIntoView(),
+      );
+  };
   // Hydrate browser-only storage after SSR; one guarded render prevents overwriting saved data.
   useEffect(() => {
     try {
@@ -139,16 +151,28 @@ export default function Dashboard() {
           <i />
         </a>
         <div className="workspace-label">WORKSPACE</div>
-        <nav>
-          <a href="#overview" className="nav-active">
-            <LayoutDashboard size={18} /> Visão geral
-          </a>
-          <a href="#inspection">
-            <ClipboardCheck size={18} /> Inspeção veicular
-          </a>
-          <a href="#report">
-            <FileText size={18} /> Relatório digital
-          </a>
+        <nav aria-label="Navegação principal">
+          {screens.map((item, index) => {
+            const Icon = [
+              LayoutDashboard,
+              CarFront,
+              ClipboardCheck,
+              Wrench,
+              Activity,
+              FileText,
+            ][index];
+            return (
+              <a
+                key={item.id}
+                href={item.id === "report" ? "#report" : "#overview"}
+                className={screen === item.id ? "nav-active" : ""}
+                onClick={() => navigate(item.id)}
+              >
+                <Icon size={18} />
+                {item.label}
+              </a>
+            );
+          })}
         </nav>
         <div className="sidebar-bottom">
           <div className="secure-box">
@@ -196,439 +220,481 @@ export default function Dashboard() {
               <ShieldCheck size={17} /> Ambiente do técnico
             </div>
           </div>
-          <div className="stats-grid">
-            <Stat
-              icon={<CarFront />}
-              label="VEÍCULO EM INSPEÇÃO"
-              value={data.vehicle.model || "Aguardando veículo"}
-              detail={data.vehicle.plate || "Preencha a identificação abaixo"}
-            />
-            <Stat
-              icon={<ClipboardCheck />}
-              label="SISTEMAS VERIFICADOS"
-              value={`${data.inspected.length} de 6`}
-              detail="Uma visão completa do veículo"
-            />
-            <Stat
-              icon={<Activity />}
-              label="PONTOS DE ATENÇÃO"
-              value={String(data.findings.length).padStart(2, "0")}
-              detail={`${urgent} ${urgent === 1 ? "item requer" : "itens requerem"} atenção imediata`}
-            />
-            <Stat
-              icon={<Wrench />}
-              label="ESTIMATIVA URGENTE"
-              value={money(urgentTotal(data.findings))}
-              detail="Valor estimado dos reparos prioritários"
-              accent
-            />
-          </div>
-          {notice && (
-            <div className="notice" role="status">
-              {notice}
-              <button aria-label="Fechar aviso" onClick={() => setNotice("")}>
-                ×
-              </button>
+          <BuilderWorkspace
+            screen={screen}
+            onNavigate={navigate}
+            legacy={data}
+            onOpen={(report) => {
+              setData(report);
+              setNotice("Laudo selecionado. Consulte a aba Relatório.");
+            }}
+            onConfirm={(finding) =>
+              setData((old) => ({
+                ...old,
+                findings: [...old.findings, finding],
+              }))
+            }
+          />
+          <div hidden={screen !== "panel" && screen !== "report"}>
+            <div className="stats-grid">
+              <Stat
+                icon={<CarFront />}
+                label="VEÍCULO EM INSPEÇÃO"
+                value={data.vehicle.model || "Aguardando veículo"}
+                detail={data.vehicle.plate || "Preencha a identificação abaixo"}
+              />
+              <Stat
+                icon={<ClipboardCheck />}
+                label="SISTEMAS VERIFICADOS"
+                value={`${data.inspected.length} de 6`}
+                detail="Uma visão completa do veículo"
+              />
+              <Stat
+                icon={<Activity />}
+                label="PONTOS DE ATENÇÃO"
+                value={String(data.findings.length).padStart(2, "0")}
+                detail={`${urgent} ${urgent === 1 ? "item requer" : "itens requerem"} atenção imediata`}
+              />
+              <Stat
+                icon={<Wrench />}
+                label="ESTIMATIVA URGENTE"
+                value={money(urgentTotal(data.findings))}
+                detail="Valor estimado dos reparos prioritários"
+                accent
+              />
             </div>
-          )}
-          <div className="content-grid">
-            <div className="editor">
-              <section className="panel" id="vehicle">
-                <PanelHeading
-                  number="01"
-                  title="Identificação do veículo"
-                  subtitle="O primeiro passo para um diagnóstico preciso."
-                />
-                <div className="vehicle-fields">
-                  <Field label="Nome do proprietário" className="wide">
-                    <input
-                      placeholder="Ex.: João Silva"
-                      value={data.vehicle.owner}
-                      maxLength={100}
-                      onChange={(e) =>
-                        update({
-                          vehicle: { ...data.vehicle, owner: e.target.value },
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field label="Veículo / modelo" className="wide">
-                    <input
-                      placeholder="Ex.: Volkswagen Polo 1.0 TSI"
-                      value={data.vehicle.model}
-                      maxLength={100}
-                      onChange={(e) =>
-                        update({
-                          vehicle: { ...data.vehicle, model: e.target.value },
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field label="Placa">
-                    <input
-                      placeholder="ABC1D23"
-                      maxLength={8}
-                      value={data.vehicle.plate}
-                      onChange={(e) =>
-                        update({
-                          vehicle: {
-                            ...data.vehicle,
-                            plate: e.target.value.toUpperCase(),
-                          },
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field label="Ano">
-                    <input
-                      type="number"
-                      min="1900"
-                      max="2100"
-                      placeholder="2022"
-                      value={data.vehicle.year}
-                      onChange={(e) =>
-                        update({
-                          vehicle: { ...data.vehicle, year: e.target.value },
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field label="Quilometragem">
-                    <div className="input-unit">
+            {notice && (
+              <div className="notice" role="status">
+                {notice}
+                <button aria-label="Fechar aviso" onClick={() => setNotice("")}>
+                  ×
+                </button>
+              </div>
+            )}
+            <div className="content-grid">
+              <div className="editor">
+                <section className="panel" id="vehicle">
+                  <PanelHeading
+                    number="01"
+                    title="Identificação do veículo"
+                    subtitle="O primeiro passo para um diagnóstico preciso."
+                  />
+                  <div className="vehicle-fields">
+                    <Field label="Nome do proprietário" className="wide">
                       <input
-                        type="number"
-                        min="0"
-                        placeholder="45.000"
-                        value={data.vehicle.mileage}
+                        placeholder="Ex.: João Silva"
+                        value={data.vehicle.owner}
+                        maxLength={100}
+                        onChange={(e) =>
+                          update({
+                            vehicle: { ...data.vehicle, owner: e.target.value },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Veículo / modelo" className="wide">
+                      <input
+                        placeholder="Ex.: Volkswagen Polo 1.0 TSI"
+                        value={data.vehicle.model}
+                        maxLength={100}
+                        onChange={(e) =>
+                          update({
+                            vehicle: { ...data.vehicle, model: e.target.value },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Placa">
+                      <input
+                        placeholder="ABC1D23"
+                        maxLength={8}
+                        value={data.vehicle.plate}
                         onChange={(e) =>
                           update({
                             vehicle: {
                               ...data.vehicle,
-                              mileage: e.target.value,
+                              plate: e.target.value.toUpperCase(),
                             },
                           })
                         }
                       />
-                      <span>km</span>
-                    </div>
-                  </Field>
-                </div>
-              </section>
-              <section className="panel">
-                <PanelHeading
-                  number="02"
-                  title="Check-up na medida certa"
-                  subtitle="Selecione a categoria e o nível de cuidado."
-                />
-                <Field label="Categoria do veículo">
-                  <select
-                    value={data.category}
-                    onChange={(e) =>
-                      update({ category: e.target.value as Category })
-                    }
-                  >
-                    {Object.entries(categories).map(([key, label]) => (
-                      <option value={key} key={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <div className="plans">
-                  {Object.entries(plans).map(([key, plan]) => (
-                    <button
-                      key={key}
-                      className={`plan ${data.plan === key ? "selected" : ""}`}
-                      aria-pressed={data.plan === key}
-                      onClick={() => update({ plan: key as Plan })}
-                    >
-                      <div>
-                        <span>{plan.label}</span>
-                        <span className="radio">
-                          {data.plan === key && <Check size={11} />}
-                        </span>
-                      </div>
-                      <strong>
-                        {money(checkupPrice(data.category, key as Plan))}
-                      </strong>
-                      <p>{plan.description}</p>
-                      {key === "complete" && <small>MAIS ESCOLHIDO</small>}
-                    </button>
-                  ))}
-                </div>
-                <div className="price-footer">
-                  <span>
-                    <ShieldCheck size={15} /> Valor do serviço de inspeção
-                  </span>
-                  <strong>{money(price)}</strong>
-                </div>
-              </section>
-              <section className="panel" id="inspection">
-                <PanelHeading
-                  number="03"
-                  title="Inspeção técnica"
-                  subtitle="Seis sistemas. Nenhum detalhe para trás."
-                />
-                <div className="tabs">
-                  <button
-                    className={tab === "inspection" ? "active" : ""}
-                    onClick={() => setTab("inspection")}
-                  >
-                    Registrar achado
-                  </button>
-                  <button
-                    className={tab === "list" ? "active" : ""}
-                    onClick={() => setTab("list")}
-                  >
-                    Achados registrados <span>{data.findings.length}</span>
-                  </button>
-                </div>
-                {tab === "inspection" ? (
-                  <>
-                    <div className="system-grid">
-                      {systems.map((s, i) => (
-                        <button
-                          key={s}
-                          className={system === s ? "active" : ""}
-                          onClick={() => setSystem(s)}
-                        >
-                          <span>{String(i + 1).padStart(2, "0")}</span>
-                          {s}
-                          {data.inspected.includes(s) && (
-                            <CheckCheck size={14} />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                    <label className="inspected-toggle">
+                    </Field>
+                    <Field label="Ano">
                       <input
-                        type="checkbox"
-                        checked={data.inspected.includes(system)}
+                        type="number"
+                        min="1900"
+                        max="2100"
+                        placeholder="2022"
+                        value={data.vehicle.year}
                         onChange={(e) =>
                           update({
-                            inspected: e.target.checked
-                              ? [...data.inspected, system]
-                              : data.inspected.filter((s) => s !== system),
+                            vehicle: { ...data.vehicle, year: e.target.value },
                           })
                         }
-                      />{" "}
-                      Marcar {system.toLowerCase()} como verificado
-                    </label>
-                    <form onSubmit={addFinding}>
-                      <Field label="O que foi identificado?">
+                      />
+                    </Field>
+                    <Field label="Quilometragem">
+                      <div className="input-unit">
                         <input
-                          required
-                          maxLength={160}
-                          placeholder="Ex.: Desgaste nas pastilhas de freio dianteiras"
-                          value={title}
-                          onChange={(e) => setTitle(e.target.value)}
+                          type="number"
+                          min="0"
+                          placeholder="45.000"
+                          value={data.vehicle.mileage}
+                          onChange={(e) =>
+                            update({
+                              vehicle: {
+                                ...data.vehicle,
+                                mileage: e.target.value,
+                              },
+                            })
+                          }
                         />
-                      </Field>
-                      <Field label="Observações técnicas">
-                        <textarea
-                          rows={3}
-                          maxLength={2000}
-                          placeholder="Descreva a condição e a recomendação de manutenção…"
-                          value={notes}
-                          onChange={(e) => setNotes(e.target.value)}
-                        />
-                      </Field>
-                      <div className="form-row">
-                        <Field label="Prioridade">
-                          <select
-                            aria-label="Prioridade"
-                      value={priority}
-                            onChange={(e) =>
-                              setPriority(e.target.value as Priority)
-                            }
-                          >
-                            {Object.entries(priorities).map(([key, p]) => (
-                              <option key={key} value={key}>
-                                {p.label} · {p.period}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                        <Field label="Estimativa do reparo (R$)">
-                          <input
-                            type="number"
-                            required
-                            min="0"
-                            max="10000000"
-                            step="0.01"
-                            placeholder="0,00"
-                            value={estimate}
-                            onChange={(e) => setEstimate(e.target.value)}
-                          />
-                        </Field>
+                        <span>km</span>
                       </div>
-                      <div className="form-footer">
-                        <span>O relatório é atualizado automaticamente.</span>
-                        <Button type="submit">
-                          <Plus size={16} /> Adicionar achado
-                        </Button>
-                      </div>
-                    </form>
-                  </>
-                ) : (
-                  <div className="findings-list">
-                    {data.findings.length === 0 ? (
-                      <Empty />
-                    ) : (
-                      data.findings.map((f) => (
-                        <div className="finding-row" key={f.id}>
-                          <span
-                            className={`priority-dot ${priorities[f.priority].color}`}
-                          />
-                          <div>
-                            <strong>{f.title}</strong>
-                            <small>
-                              {f.system} · {priorities[f.priority].period}
-                            </small>
-                            {f.notes && <p>{f.notes}</p>}
-                            <b>{money(f.estimate)}</b>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Excluir achado: ${f.title}`}
-                            onClick={() => {
-                              update({
-                                findings: data.findings.filter(
-                                  (item) => item.id !== f.id,
-                                ),
-                              });
-                              setNotice(
-                                "Achado excluído. Relatório atualizado.",
-                              );
-                            }}
-                          >
-                            <Trash2 size={16} />
-                          </Button>
-                        </div>
-                      ))
-                    )}
+                    </Field>
                   </div>
-                )}
-              </section>
-            </div>
-            <aside className="report-column" id="report">
-              <section className="panel report">
-                <div className="report-heading">
-                  <span className="report-icon">
-                    <FileText size={21} />
-                  </span>
-                  <span className="live">
-                    <span /> AO VIVO
-                  </span>
-                </div>
-                <h2>Clareza para decidir.</h2>
-                <p className="muted">
-                  O diagnóstico do veículo, em um só lugar.
-                </p>
-                <div className="report-vehicle">
-                  <CarFront size={30} />
-                  <div>
-                    <strong>{data.vehicle.model || "Seu veículo aqui"}</strong>
-                    <span>
-                      {data.vehicle.plate || "Placa não informada"}
-                      {data.vehicle.year && ` · ${data.vehicle.year}`}
-                    </span>
-                  </div>
-                </div>
-                <div className="report-meta">
-                  <span>
-                    Proprietário <b>{data.vehicle.owner || "Não informado"}</b>
-                  </span>
-                  <span>
-                    Quilometragem{" "}
-                    <b>
-                      {data.vehicle.mileage
-                        ? `${Number(data.vehicle.mileage).toLocaleString("pt-BR")} km`
-                        : "Não informada"}
-                    </b>
-                  </span>
-                  <span>
-                    Plano selecionado <b>{plans[data.plan].label}</b>
-                  </span>
-                </div>
-                <div className="progress-label">
-                  <span>Progresso da inspeção</span>
-                  <b>{Math.round((data.inspected.length / 6) * 100)}%</b>
-                </div>
-                <div className="progress-track">
-                  <div
-                    style={{ width: `${(data.inspected.length / 6) * 100}%` }}
+                </section>
+                <section className="panel">
+                  <PanelHeading
+                    number="02"
+                    title="Check-up na medida certa"
+                    subtitle="Selecione a categoria e o nível de cuidado."
                   />
-                </div>
-                <div className="report-divider" />
-                <h3>Plano de manutenção</h3>
-                <p className="muted small">
-                  O cuidado certo, no momento certo.
-                </p>
-                <div className="timeline">
-                  {(Object.keys(priorities) as Priority[]).map((p) => {
-                    const items = data.findings.filter((f) => f.priority === p);
-                    return (
-                      <div
-                        className={`timeline-item ${priorities[p].color}`}
-                        key={p}
+                  <Field label="Categoria do veículo">
+                    <select
+                      value={data.category}
+                      onChange={(e) =>
+                        update({ category: e.target.value as Category })
+                      }
+                    >
+                      {Object.entries(categories).map(([key, label]) => (
+                        <option value={key} key={key}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <div className="plans">
+                    {Object.entries(plans).map(([key, plan]) => (
+                      <button
+                        key={key}
+                        className={`plan ${data.plan === key ? "selected" : ""}`}
+                        aria-pressed={data.plan === key}
+                        onClick={() => update({ plan: key as Plan })}
                       >
-                        <div className="timeline-dot" />
-                        <div className="timeline-title">
-                          <strong>{priorities[p].period}</strong>
-                          <span>
-                            {items.length}{" "}
-                            {items.length === 1 ? "item" : "itens"}
+                        <div>
+                          <span>{plan.label}</span>
+                          <span className="radio">
+                            {data.plan === key && <Check size={11} />}
                           </span>
                         </div>
-                        <small>{priorities[p].label}</small>
-                        {items.length ? (
-                          items.map((f) => (
-                            <div className="timeline-finding" key={f.id}>
-                              <span>{f.title}</span>
+                        <strong>
+                          {money(checkupPrice(data.category, key as Plan))}
+                        </strong>
+                        <p>{plan.description}</p>
+                        {key === "complete" && <small>MAIS ESCOLHIDO</small>}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="price-footer">
+                    <span>
+                      <ShieldCheck size={15} /> Valor do serviço de inspeção
+                    </span>
+                    <strong>{money(price)}</strong>
+                  </div>
+                </section>
+                <section className="panel" id="inspection">
+                  <PanelHeading
+                    number="03"
+                    title="Inspeção técnica"
+                    subtitle="Seis sistemas. Nenhum detalhe para trás."
+                  />
+                  <div className="tabs">
+                    <button
+                      className={tab === "inspection" ? "active" : ""}
+                      onClick={() => setTab("inspection")}
+                    >
+                      Registrar achado
+                    </button>
+                    <button
+                      className={tab === "list" ? "active" : ""}
+                      onClick={() => setTab("list")}
+                    >
+                      Achados registrados <span>{data.findings.length}</span>
+                    </button>
+                  </div>
+                  {tab === "inspection" ? (
+                    <>
+                      <div className="system-grid">
+                        {systems.map((s, i) => (
+                          <button
+                            key={s}
+                            className={system === s ? "active" : ""}
+                            onClick={() => setSystem(s)}
+                          >
+                            <span>{String(i + 1).padStart(2, "0")}</span>
+                            {s}
+                            {data.inspected.includes(s) && (
+                              <CheckCheck size={14} />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                      <label className="inspected-toggle">
+                        <input
+                          type="checkbox"
+                          checked={data.inspected.includes(system)}
+                          onChange={(e) =>
+                            update({
+                              inspected: e.target.checked
+                                ? [...data.inspected, system]
+                                : data.inspected.filter((s) => s !== system),
+                            })
+                          }
+                        />{" "}
+                        Marcar {system.toLowerCase()} como verificado
+                      </label>
+                      <form onSubmit={addFinding}>
+                        <Field label="O que foi identificado?">
+                          <input
+                            required
+                            maxLength={160}
+                            placeholder="Ex.: Desgaste nas pastilhas de freio dianteiras"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                          />
+                        </Field>
+                        <Field label="Observações técnicas">
+                          <textarea
+                            rows={3}
+                            maxLength={2000}
+                            placeholder="Descreva a condição e a recomendação de manutenção…"
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                          />
+                        </Field>
+                        <div className="form-row">
+                          <Field label="Prioridade">
+                            <select
+                              aria-label="Prioridade"
+                              value={priority}
+                              onChange={(e) =>
+                                setPriority(e.target.value as Priority)
+                              }
+                            >
+                              {Object.entries(priorities).map(([key, p]) => (
+                                <option key={key} value={key}>
+                                  {p.label} · {p.period}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          <Field label="Estimativa do reparo (R$)">
+                            <input
+                              type="number"
+                              required
+                              min="0"
+                              max="10000000"
+                              step="0.01"
+                              placeholder="0,00"
+                              value={estimate}
+                              onChange={(e) => setEstimate(e.target.value)}
+                            />
+                          </Field>
+                        </div>
+                        <div className="form-footer">
+                          <span>O relatório é atualizado automaticamente.</span>
+                          <Button type="submit">
+                            <Plus size={16} /> Adicionar achado
+                          </Button>
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="findings-list">
+                      {data.findings.length === 0 ? (
+                        <Empty />
+                      ) : (
+                        data.findings.map((f) => (
+                          <div className="finding-row" key={f.id}>
+                            <span
+                              className={`priority-dot ${priorities[f.priority].color}`}
+                            />
+                            <div>
+                              <strong>{f.title}</strong>
+                              <small>
+                                {f.system} · {priorities[f.priority].period}
+                              </small>
+                              {f.notes && <p>{f.notes}</p>}
+                              {f.origin && (
+                                <p>
+                                  Origem:{" "}
+                                  {f.origin === "diagnostic"
+                                    ? "Diagnóstico guiado"
+                                    : "Inspeção preventiva"}{" "}
+                                  · {f.sourceId}
+                                  <br />
+                                  Evidência: {f.evidence}
+                                </p>
+                              )}
                               <b>{money(f.estimate)}</b>
                             </div>
-                          ))
-                        ) : (
-                          <p className="timeline-empty">
-                            Nenhum achado registrado
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="urgent-total">
-                  <span>Estimativa de reparos urgentes</span>
-                  <strong>{money(urgentTotal(data.findings))}</strong>
-                  <small>
-                    Valores estimados, sujeitos à avaliação e aprovação.
-                  </small>
-                </div>
-                <div className="service-total">
-                  <span>Check-up {plans[data.plan].label}</span>
-                  <b>{money(price)}</b>
-                </div>
-                <Button className="w-full" onClick={exportReport}>
-                  <ArrowDownToLine size={17} /> Exportar relatório{" "}
-                  <ArrowRight size={16} />
-                </Button>
-                <p className="export-note">
-                  Exportação demonstrativa em JSON · sem envio externo
-                </p>
-              </section>
-              <div className="tip">
-                <Sparkles size={20} />
-                <div>
-                  <strong>Mais prevenção. Menos surpresas.</strong>
-                  <p>
-                    Uma inspeção hoje é mais segurança em cada quilômetro
-                    amanhã.
-                  </p>
-                </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Excluir achado: ${f.title}`}
+                              onClick={() => {
+                                update({
+                                  findings: data.findings.filter(
+                                    (item) => item.id !== f.id,
+                                  ),
+                                });
+                                setNotice(
+                                  "Achado excluído. Relatório atualizado.",
+                                );
+                              }}
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </section>
               </div>
-            </aside>
+              <aside className="report-column" id="report">
+                <section className="panel report">
+                  <div className="report-heading">
+                    <span className="report-icon">
+                      <FileText size={21} />
+                    </span>
+                    <span className="live">
+                      <span /> AO VIVO
+                    </span>
+                  </div>
+                  <h2>Clareza para decidir.</h2>
+                  <p className="muted">
+                    O diagnóstico do veículo, em um só lugar.
+                  </p>
+                  <div className="report-vehicle">
+                    <CarFront size={30} />
+                    <div>
+                      <strong>
+                        {data.vehicle.model || "Seu veículo aqui"}
+                      </strong>
+                      <span>
+                        {data.vehicle.plate || "Placa não informada"}
+                        {data.vehicle.year && ` · ${data.vehicle.year}`}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="report-meta">
+                    <span>
+                      Proprietário{" "}
+                      <b>{data.vehicle.owner || "Não informado"}</b>
+                    </span>
+                    <span>
+                      Quilometragem{" "}
+                      <b>
+                        {data.vehicle.mileage
+                          ? `${Number(data.vehicle.mileage).toLocaleString("pt-BR")} km`
+                          : "Não informada"}
+                      </b>
+                    </span>
+                    <span>
+                      Plano selecionado <b>{plans[data.plan].label}</b>
+                    </span>
+                  </div>
+                  <div className="progress-label">
+                    <span>Progresso da inspeção</span>
+                    <b>{Math.round((data.inspected.length / 6) * 100)}%</b>
+                  </div>
+                  <div className="progress-track">
+                    <div
+                      style={{ width: `${(data.inspected.length / 6) * 100}%` }}
+                    />
+                  </div>
+                  <div className="report-divider" />
+                  <h3>Plano de manutenção</h3>
+                  <p className="muted small">
+                    O cuidado certo, no momento certo.
+                  </p>
+                  <div className="timeline">
+                    {(Object.keys(priorities) as Priority[]).map((p) => {
+                      const items = data.findings.filter(
+                        (f) => f.priority === p,
+                      );
+                      return (
+                        <div
+                          className={`timeline-item ${priorities[p].color}`}
+                          key={p}
+                        >
+                          <div className="timeline-dot" />
+                          <div className="timeline-title">
+                            <strong>{priorities[p].period}</strong>
+                            <span>
+                              {items.length}{" "}
+                              {items.length === 1 ? "item" : "itens"}
+                            </span>
+                          </div>
+                          <small>{priorities[p].label}</small>
+                          {items.length ? (
+                            items.map((f) => (
+                              <div className="timeline-finding" key={f.id}>
+                                <span>{f.title}</span>
+                                {f.origin && (
+                                  <small>
+                                    Origem:{" "}
+                                    {f.origin === "diagnostic"
+                                      ? "Diagnóstico guiado"
+                                      : "Inspeção preventiva"}{" "}
+                                    · Evidência: {f.evidence}
+                                  </small>
+                                )}
+                                <b>{money(f.estimate)}</b>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="timeline-empty">
+                              Nenhum achado registrado
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="urgent-total">
+                    <span>Estimativa de reparos urgentes</span>
+                    <strong>{money(urgentTotal(data.findings))}</strong>
+                    <small>
+                      Valores estimados, sujeitos à avaliação e aprovação.
+                    </small>
+                  </div>
+                  <div className="service-total">
+                    <span>Check-up {plans[data.plan].label}</span>
+                    <b>{money(price)}</b>
+                  </div>
+                  <Button className="w-full" onClick={exportReport}>
+                    <ArrowDownToLine size={17} /> Exportar relatório{" "}
+                    <ArrowRight size={16} />
+                  </Button>
+                  <p className="export-note">
+                    Exportação demonstrativa em JSON · sem envio externo
+                  </p>
+                </section>
+                <div className="tip">
+                  <Sparkles size={20} />
+                  <div>
+                    <strong>Mais prevenção. Menos surpresas.</strong>
+                    <p>
+                      Uma inspeção hoje é mais segurança em cada quilômetro
+                      amanhã.
+                    </p>
+                  </div>
+                </div>
+              </aside>
+            </div>
           </div>
           <footer>
             <span className="footer-brand">
